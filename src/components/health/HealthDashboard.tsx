@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { X, Info } from 'lucide-react';
 import { HealthSpanCard } from './HealthSpanCard';
 import { HealthScoreCard } from './HealthScoreCard';

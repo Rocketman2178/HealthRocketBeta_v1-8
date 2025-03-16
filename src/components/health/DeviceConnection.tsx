@@ -3,7 +3,6 @@ import { Smartphone, X, Loader2, Search } from "lucide-react";
 import { useSupabase } from "../../contexts/SupabaseContext";
 import { supabase } from "../../lib/supabase/client";
 import LoadingSpinner from "../common/LoadingSpinner";
-import { body } from "@tryvital/vital-node/api";
 
 interface DeviceConnectionProps {
   onClose: () => void;
@@ -32,9 +31,11 @@ export function DeviceConnection({ onClose }: DeviceConnectionProps) {
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
   const [deviceEmail, setDeviceEmail] = useState("");
   const [showEmailInput, setShowEmailInput] = useState(false);
+  const [showDisConnectedMessage, setShowDisconnectMessage] = useState(false);
   const [loading, setLoading] = useState(false);
   const [fetchingProvidersLoading, setFetchingProvidersLoading] =
     useState(false);
+  const [disConnectLoading, setDisconnectLoading] = useState(false);
   const [
     fetchingConnectedProvidersLoading,
     setfetchingConnectedProvidersLoading,
@@ -45,21 +46,36 @@ export function DeviceConnection({ onClose }: DeviceConnectionProps) {
   const [connectedProviders, setConnectedProviders] = useState<ProviderType[]>(
     []
   );
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchTerm, setSearchTerm] = useState<string>("");
   const emailInputRef = useRef<HTMLDivElement>(null);
+
+  // HANDLE PROVIDER SELECT
   const handleProviderSelect = (providerId: string) => {
     setSelectedProvider(providerId);
     setShowEmailInput(true);
+    setShowDisconnectMessage(false);
     setError(null);
   };
 
+  // HANDLE PROVIDER DISELECT
+  const handleProvderDiselect = (providerId: string) => {
+    setSelectedProvider(providerId);
+    setShowEmailInput(false);
+    setShowDisconnectMessage(true);
+    setError(null);
+  };
+
+  // HANDLE ERROR REMOVE
+  const handleErrorRemove = ()=>{
+    setError("");
+  }
   // GET ALL PROVIDERS
   useEffect(() => {
     const getAllProviders = async () => {
       setFetchingProvidersLoading(true);
       try {
         const response = await fetch(
-          "https://rkyekzdnkrnmdwmoxyms.supabase.co/functions/v1/get-all-providers",
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-all-providers`,
           {
             method: "GET",
             headers: {
@@ -85,34 +101,41 @@ export function DeviceConnection({ onClose }: DeviceConnectionProps) {
   }, []);
 
   // GET CONNECTED USER PROVIDERS
+  const getConnectedProviders = async () => {
+    if (!user?.id) return;
+    try {
+      setfetchingConnectedProvidersLoading(true);
+      const { data: userData, error } = await supabase
+        .from("users")
+        .select("vital_user_id")
+        .eq("id", user?.id)
+        .single();
+
+      if (error) throw error;
+      const response = await fetch(
+        `${
+          import.meta.env.VITE_SUPABASE_URL
+        }/functions/v1/get-connected-providers`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            user_id: userData.vital_user_id,
+          }),
+        }
+      );
+      const data = await response.json();
+      setConnectedProviders(data?.connectedProviders || []);
+    } catch (error) {
+    } finally {
+      setfetchingConnectedProvidersLoading(false);
+    }
+  };
   useEffect(() => {
-    const getConnectedProviders = async () => {
-       if (!user?.id) return;
-      try {
-        setfetchingConnectedProvidersLoading(true);
-        const response = await fetch(
-          `https://rkyekzdnkrnmdwmoxyms.supabase.co/functions/v1/get-connected-providers`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              user_id: user?.id,
-            }),
-          }
-        );
-        const data = await response.json();
-        console.log("user id:",data);
-        setConnectedProviders(data?.connectedProviders || []);
-      } catch (error) {
-        
-      } finally {
-        setfetchingConnectedProvidersLoading(false);
-      }
-    };
     getConnectedProviders();
-  }, []);
+  }, [user?.id]);
 
   // SCROLL TO EMAIL INPUT
   useEffect(() => {
@@ -239,6 +262,46 @@ export function DeviceConnection({ onClose }: DeviceConnectionProps) {
       setLoading(false);
     }
   };
+
+  // HANDLE PROVIDER DISCONNECT
+  const handleDisconnect = async () => {
+    try {
+      setDisconnectLoading(true);
+      const { data: userData, error } = await supabase
+        .from("users")
+        .select("vital_user_id")
+        .eq("id", user?.id)
+        .single();
+
+      if (error) throw error;
+      const response = await fetch(
+        `${
+          import.meta.env.VITE_SUPABASE_URL
+        }/functions/v1/deregister-connection`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${access_token}`,
+            apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+          },
+          body: JSON.stringify({
+            vital_user_id: userData?.vital_user_id,
+            user_id:user?.id,
+            provider: selectedProvider,
+          }),
+        }
+      );
+      const data = await response.json();
+      if(data?.success){
+        getConnectedProviders();
+      }
+    } catch (error) {}
+    finally{
+      setDisconnectLoading(false);
+    }
+  };
+
   // SORT PROVIDERS: FEATURED FIRST, THEN ALPHABETICAL
   const sortedProviders = useMemo(() => {
     const featured: ProviderType[] = [];
@@ -256,12 +319,14 @@ export function DeviceConnection({ onClose }: DeviceConnectionProps) {
     return [...featured, ...others];
   }, [providers]);
 
-  // Filter providers based on search term
+  // FILTER PROVIDERS BASED ON SEARCH TERM
   const filteredProviders = useMemo(() => {
     return sortedProviders.filter((provider: ProviderType) =>
       provider.name.toLowerCase().includes(searchTerm.toLowerCase())
     );
   }, [searchTerm, sortedProviders]);
+
+  // LOADING SPINNER
   if (fetchingProvidersLoading || fetchingConnectedProvidersLoading)
     return <LoadingSpinner />;
 
@@ -300,21 +365,22 @@ export function DeviceConnection({ onClose }: DeviceConnectionProps) {
           </button>
         </div>
 
-        {error && (
-          <div className="bg-red-500/10 text-red-400 p-3 rounded-lg text-sm flex items-start gap-2">
-            <X size={16} className="shrink-0 mt-0.5" />
-            <span>{error}</span>
-          </div>
-        )}
+       
 
         <div className="space-y-4 h-[80vh] overflow-y-auto px-2">
           <div className="grid grid-cols-1 gap-3">
             {filteredProviders?.map((provider: ProviderType) => {
+              const isConnected = connectedProviders.some(
+                (connectedProvider) => connectedProvider.slug === provider.slug
+              );
               return (
-                <button
+                <div
                   key={provider.slug}
-                  onClick={() => handleProviderSelect(provider.slug)}
-                  disabled={loading && selectedProvider === provider.slug}
+                  onClick={
+                    isConnected
+                      ? () => handleProvderDiselect(provider?.slug)
+                      : () => handleProviderSelect(provider.slug)
+                  }
                   className={`flex items-center gap-3 p-3 rounded-lg border-2 border-gray-600 transition-colors${
                     loading && selectedProvider === provider.slug
                       ? "bg-gray-700 cursor-wait"
@@ -332,63 +398,100 @@ export function DeviceConnection({ onClose }: DeviceConnectionProps) {
                     <div className="text-xs text-gray-400">
                       {provider.description || "No description available"}
                     </div>
+
                     {loading && selectedProvider === provider.slug ? (
                       <div className="flex items-center gap-1 text-xs text-gray-400">
                         <Loader2 size={12} className="animate-spin" />
-                        <span>Connecting...</span>
+                        <span>
+                          {isConnected ? "Disconnecting..." : "Connecting..."}
+                        </span>
                       </div>
                     ) : (
-                      <div className="text-xs text-gray-400">
-                        Click to connect
+                      <div className="text-xs text-gray-400 flex flex-col">
+                        {isConnected && (
+                          <span className="text-green-500">Connected</span>
+                        )}
+
+                        <span>
+                          {isConnected
+                            ? "Click To Disconnect"
+                            : "Click To Connect"}
+                        </span>
                       </div>
                     )}
                   </div>
-                </button>
+                </div>
               );
             })}
           </div>
 
-          {showEmailInput && (
-            <div className="mt-6 space-y-4" ref={emailInputRef}>
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Enter your{" "}
-                  {providers.find((p) => p.slug === selectedProvider)?.name}{" "}
-                  Account Email
-                </label>
-                <input
-                  type="email"
-                  value={deviceEmail}
-                  onChange={(e) => setDeviceEmail(e.target.value)}
-                  placeholder="device@example.com"
-                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                />
-                <p className="mt-2 text-xs text-gray-400">
-                  This should be the email associated with your device account
-                </p>
-              </div>
 
-              <div className="flex justify-end gap-3">
-                <button
-                  onClick={() => {
-                    setShowEmailInput(false);
-                    setSelectedProvider(null);
-                    setDeviceEmail("");
-                  }}
-                  className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors"
-                >
-                  Back
-                </button>
-                <button
-                  onClick={handleConnect}
-                  disabled={loading || !deviceEmail.trim()}
-                  className="px-4 py-2 text-sm bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  {loading ? "Connecting..." : "Connect Device"}
-                </button>
-              </div>
+          <div className="mt-6 space-y-4" ref={emailInputRef}>
+          {showDisConnectedMessage && (
+            <div className="flex justify-between">
+              <span className="text-yellow-500">
+              You Are Disconnecting Device{" "}
+              {connectedProviders?.find(
+                (provider) => provider?.slug === selectedProvider
+              )?.name || ""}
+
+              </span>
+              <button
+                    onClick={handleDisconnect}
+                    className="px-4 py-2 text-sm bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {disConnectLoading ? "Disconnecting..." : "Disconnect Device"}
+                  </button>
             </div>
           )}
+            {showEmailInput && (
+              <div className="flex flex-col gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Enter your{" "}
+                    {providers.find((p) => p.slug === selectedProvider)?.name}{" "}
+                    Account Email
+                  </label>
+                  <input
+                    type="email"
+                    value={deviceEmail}
+                    onChange={(e) => setDeviceEmail(e.target.value)}
+                    placeholder="device@example.com"
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  />
+                  <p className="mt-2 text-xs text-gray-400">
+                    This should be the email associated with your device account
+                  </p>
+                </div>
+
+                <div className="flex justify-end gap-3">
+                  <button
+                    onClick={() => {
+                      setShowEmailInput(false);
+                      setSelectedProvider(null);
+                      setDeviceEmail("");
+                    }}
+                    className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors"
+                  >
+                    Back
+                  </button>
+                  <button
+                    onClick={handleConnect}
+                    disabled={loading || !deviceEmail.trim()}
+                    className="px-4 py-2 text-sm bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {loading ? "Connecting..." : "Connect Device"}
+                  </button>
+                </div>
+              </div>
+            )}
+             {error && (
+          <div className="bg-red-500/10 text-red-400 p-3 rounded-lg text-sm flex items-start gap-2">
+            <X size={16} className="shrink-0 mt-0.5" onClick={handleErrorRemove} />
+            <span>{error}</span>
+          </div>
+        )}
+          </div>
 
           <div className="text-xs text-center text-gray-400 mt-4">
             Your data is securely synced and only accessible by you

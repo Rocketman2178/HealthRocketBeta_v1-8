@@ -25,7 +25,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        connectedProviders: data,
+        connectedProviders: data?.providers,
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },

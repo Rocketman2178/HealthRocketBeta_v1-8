@@ -1,4 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+
 import {
   VitalClient,
   VitalEnvironment,
@@ -16,15 +18,29 @@ serve(async (req) => {
   }
 
   try {
+    // CREATE SUPABASE CLIENT
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
+
     const vitalClient = new VitalClient({
       apiKey: Deno.env.get("VITAL_API_KEY")!,
       environment: VitalEnvironment.Sandbox,
     });
-   const {user_id,provider} = await req.json();
-const data = await vitalClient.user.deregisterProvider(
-    user_id,
-    provider
-);
+    const { vital_user_id, user_id, provider } = await req.json();
+    const data = await vitalClient.user.deregisterProvider(
+      vital_user_id,
+      provider
+    );
+    if (data?.success) {
+      const { error } = await supabase
+        .from("user_devices")
+        .delete()
+        .eq("user_id", user_id)
+        .eq("provider", provider);
+      if (error) throw error;
+    }
     return new Response(
       JSON.stringify({
         success: true,
