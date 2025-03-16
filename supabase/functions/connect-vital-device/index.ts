@@ -24,7 +24,7 @@ serve(async (req) => {
       environment: VitalEnvironment.Sandbox
     })
     // Get user ID and provider from request
-    const { user_id, provider } = await req.json()
+    const { user_id, provider ,device_email} = await req.json()
     if (!user_id || !provider) {
       throw new Error('User ID and provider are required')
     }
@@ -47,7 +47,8 @@ serve(async (req) => {
       // Create connection link
       const link = await vitalClient.link.token({
         userId: user.vital_user_id,
-        provider
+        provider,
+        redirectUrl: Deno.env.get('VITAL_REDIRECT_URL')!,
       })
 
     // Store device connection
@@ -58,8 +59,9 @@ serve(async (req) => {
         vital_user_id: user.vital_user_id,
         provider,
         status: 'pending',
+        device_email,
         metadata: {
-          link_token: link.link_token
+          link_token: link.linkToken
         }
       })
 

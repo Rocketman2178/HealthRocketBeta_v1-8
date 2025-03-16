@@ -129,7 +129,7 @@ export interface Database {
           id?: string
           user_id?: string
           challenge_id?: string
-          status?: string
+          status?: stringUser
           progress?: number
           started_at?: string
           completed_at?: string | null

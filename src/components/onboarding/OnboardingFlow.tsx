@@ -13,6 +13,7 @@ import { HealthUpdate } from "./steps/HealthUpdate";
 import { Logo } from "../ui/logo";
 import { supabase } from "../../lib/supabase";
 import { useUser } from "../../hooks/useUser";
+import LoadingSpinner from "../common/LoadingSpinner";
 export function OnboardingFlow() {
   const { user } = useSupabase();
   const { userData, userLoading, fetchUser } = useUser(user?.id);
@@ -106,9 +107,7 @@ export function OnboardingFlow() {
       <div className="relative z-10 w-full max-w-md">
         <div className="relative z-10 mt-0">
           {userLoading ? (
-            <div className="min-h-screen flex items-center justify-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-orange-500"></div>
-            </div>
+         <LoadingSpinner/>
           ) : (
             renderStep()
           )}
