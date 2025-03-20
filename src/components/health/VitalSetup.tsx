@@ -3,6 +3,8 @@ import { User, X, Loader2, Check, Smartphone, Shield } from "lucide-react";
 import { useSupabase } from "../../contexts/SupabaseContext";
 import { supabase } from "../../lib/supabase";
 import LoadingSpinner from "../common/LoadingSpinner";
+import { useNavigate } from "react-router-dom";
+import { supportedProviders } from "../../constants";
 
 interface VitalSetupProps {
   onComplete: () => void;
@@ -10,6 +12,7 @@ interface VitalSetupProps {
 }
 
 export function VitalSetup({ onComplete, onClose }: VitalSetupProps) {
+  const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
   const [getVitalUserLoading, setGetVitalUserLoading] = useState(false);
   const [currentVitalUserId, setCurrentVitalUserId] = useState(null);
@@ -95,19 +98,20 @@ export function VitalSetup({ onComplete, onClose }: VitalSetupProps) {
     } finally {
     }
   };
-
-  //
-  const handleGotoConnectDevices = () => {
-    onComplete();
+  const handleNext = () => {
+    navigate("/connect-device");
   };
+  
+
+  if (getVitalUserLoading) return <LoadingSpinner />;
 
   const renderStep = () => {
     switch (step) {
       case "intro":
         return (
-          <>
-            <div className="bg-gray-700/50 rounded-lg p-4 space-y-4">
-              <p className="text-gray-300">
+          <div className="flex flex-col justify-center gap-2">
+            <div className="rounded-lg p-4 space-y-4 bg-gray-700/50">
+              <p className="text-gray-300 text-lg font-bold">
                 Connect your health devices and apps to automatically track your
                 progress. This allows you to:
               </p>
@@ -127,35 +131,48 @@ export function VitalSetup({ onComplete, onClose }: VitalSetupProps) {
               </ul>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-4 md:px-4 ">
               <div className="bg-gray-700/50 rounded-lg p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <Smartphone className="text-orange-500" size={20} />
-                  <h4 className="text-sm font-medium text-white">
-                    Supported Devices
-                  </h4>
+                <div className="flex justify-between">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Smartphone className="text-orange-500" size={20} />
+                    <h4 className="text-lg font-medium text-white">
+                      Supported Devices
+                    </h4>
+                  </div>
+                  
+                  
                 </div>
-                <ul className="space-y-1 text-sm text-gray-300">
-                  <li>• Oura Ring</li>
-                  <li>• Fitbit</li>
-                  <li>• Apple Health</li>
-                  <li>• Garmin</li>
+
+                <ul className="space-y-1  flex flex-col gap-2 text-gray-300">
+                  {supportedProviders?.map((provider) => (
+                    <div className="flex justify-between items-center px-2 ">
+                      <div className="flex gap-2 items-center ">
+                        <img
+                          src={provider?.logo}
+                          className="object-cover w-10 h-10 rounded-full"
+                        />{" "}
+                        <span>{provider.name}</span>
+                      </div>
+                    
+                    </div>
+                  ))}
                 </ul>
               </div>
 
-              <div className="bg-gray-700/50 rounded-lg p-4">
+              <div className="bg-gray-700/50 rounded-lg p-4 bg-gray-700/50">
                 <div className="flex items-center gap-2 mb-2">
                   <Shield className="text-orange-500" size={20} />
                   <h4 className="text-sm font-medium text-white">
                     Data Security
                   </h4>
                 </div>
-                <p className="text-sm text-gray-300">
+                <p className="text-s text-gray-300">
                   Your health data is encrypted and only accessible by you
                 </p>
               </div>
             </div>
-          </>
+          </div>
         );
 
       case "setup":
@@ -184,10 +201,10 @@ export function VitalSetup({ onComplete, onClose }: VitalSetupProps) {
   if (getVitalUserLoading) return <LoadingSpinner />;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 flex flex-col overflow-y-auto">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <User className="text-orange-500" size={24} />
+        <User className="text-orange-500" size={24} />
           <h3 className="text-lg font-semibold text-white">
             {currentVitalUserId
               ? "Connect Devices To Your Vital Account"
@@ -202,7 +219,7 @@ export function VitalSetup({ onComplete, onClose }: VitalSetupProps) {
       {renderStep()}
 
       {error && (
-        <div className="bg-red-500/10 text-red-400 p-3 rounded-lg text-sm">
+        <div className="bg-red-500/10 text-red-400 p-3 rounded-lg text-s">
           {error}
         </div>
       )}
@@ -224,7 +241,7 @@ export function VitalSetup({ onComplete, onClose }: VitalSetupProps) {
         )}
         {currentVitalUserId && (
           <button
-            onClick={handleGotoConnectDevices}
+            onClick={handleNext}
             className="px-4 py-2 text-sm bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors"
           >
             Go To Connect Devices

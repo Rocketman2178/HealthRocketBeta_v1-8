@@ -1,13 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Smartphone, X, Loader2, Search } from "lucide-react";
 import { useSupabase } from "../../contexts/SupabaseContext";
 import { supabase } from "../../lib/supabase/client";
 import LoadingSpinner from "../common/LoadingSpinner";
-
-interface DeviceConnectionProps {
-  onClose: () => void;
-}
-
+import { useSearchParams } from "react-router-dom";
+import { useVitalLink } from "@tryvital/vital-link";
 type ProviderType = {
   authType: string;
   description: string;
@@ -18,7 +15,6 @@ type ProviderType = {
 };
 const featuredProviders = [
   "Oura",
-  "Apple Health",
   "Garmin",
   "Whoop V2",
   "Strava",
@@ -27,8 +23,12 @@ const featuredProviders = [
   "MyFitnessPal",
   "Fitbit",
 ];
-export function DeviceConnection({ onClose }: DeviceConnectionProps) {
+
+export function DeviceConnection() {
+  const [searchParams] = useSearchParams();
+
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
+  const [connectionMessage, setConnectionMessage] = useState("");
   const [deviceEmail, setDeviceEmail] = useState("");
   const [showEmailInput, setShowEmailInput] = useState(false);
   const [showDisConnectedMessage, setShowDisconnectMessage] = useState(false);
@@ -40,7 +40,7 @@ export function DeviceConnection({ onClose }: DeviceConnectionProps) {
     fetchingConnectedProvidersLoading,
     setfetchingConnectedProvidersLoading,
   ] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [errorMessage, setError] = useState<string | null>(null);
   const { user, session: access_token } = useSupabase();
   const [providers, setProviders] = useState<ProviderType[]>([]);
   const [connectedProviders, setConnectedProviders] = useState<ProviderType[]>(
@@ -66,9 +66,10 @@ export function DeviceConnection({ onClose }: DeviceConnectionProps) {
   };
 
   // HANDLE ERROR REMOVE
-  const handleErrorRemove = ()=>{
+  const handleErrorRemove = () => {
     setError("");
-  }
+    setConnectionMessage("");
+  };
   // GET ALL PROVIDERS
   useEffect(() => {
     const getAllProviders = async () => {
@@ -147,6 +148,82 @@ export function DeviceConnection({ onClose }: DeviceConnectionProps) {
     }
   }, [selectedProvider]);
 
+  useEffect(() => {
+    const processStatus = async () => {
+      setLoading(true);
+
+      const stateParam = searchParams.get("state");
+      const providerParam = searchParams.get("provider");
+
+      if (stateParam === "success" && providerParam) {
+        try {
+          // Update status to "active"
+          const { error } = await supabase
+            .from("user_devices")
+            .update({ status: "active" })
+            .eq("user_id", user?.id)
+            .eq("provider", providerParam);
+
+          if (error) throw error;
+          getConnectedProviders();
+          setConnectionMessage("Device successfully linked!");
+        } catch (error) {
+          setConnectionMessage(
+            "An error occurred while updating your device status."
+          );
+        }
+      } else {
+        setConnectionMessage("Invalid request or missing parameters.");
+      }
+
+      setLoading(false);
+    };
+
+    processStatus();
+  }, [searchParams, user?.id]);
+  const onSuccess = useCallback((metadata:any) => {
+    // Device is now connected.
+    console.log("onSuccess", metadata);
+  }, []);
+
+  const onExit = useCallback((metadata:any) => {
+    // User has quit the link flow.
+    console.log("onExit", metadata);
+  }, []);
+
+  const onError = useCallback((metadata:any) => {
+    // Error encountered in connecting device.
+    console.log("onError", metadata);
+  }, []);
+
+  const config = {
+    onSuccess,
+    onExit,
+    onError,
+    env: "sandbox",
+    region: "us",
+  };
+
+  const { open, ready, error } = useVitalLink(config);
+
+  const handleVitalOpen = async (token:string) => {
+    open(token);
+  };
+const embedableProviders:string[] = [
+  "zwift",
+  "ultrahuman",
+  "renpho",
+  "omron",
+  "kardia",
+  "hammerhead",
+  "freestyle_libre",
+  "dexcom",
+  "beurer_api",
+  "abbott_libreview",
+  "strava",
+  "peloton",
+  "eight_sleep"
+];
   // HANDLE CONNECT
   const handleConnect = async () => {
     if (!user?.id) return;
@@ -228,16 +305,14 @@ export function DeviceConnection({ onClose }: DeviceConnectionProps) {
       }
 
       // FIND THE LINK WEB URL
-      const linkWebUrl = data?.link?.linkWebUrl || data?.linkWebUrl;
-
+      const linkWebUrl = data?.link?.linkWebUrl;
+      const linkToken = data?.link.linkToken;
+      const isProviderIframeEmbedable = embedableProviders.some((provider:string)=>provider===selectedProvider);
       // CHECK IF THE LINK WEB URL EXISTS
-      if (linkWebUrl) {
-        window.open(linkWebUrl, "_blank");
-        // Close device connection modal
-        onClose();
-      } else {
-        console.error("No link token in response:", data);
-        throw new Error("Failed to get connection link. Please try again.");
+      if (linkToken && isProviderIframeEmbedable) {
+        handleVitalOpen(linkToken);
+      }else{
+        window.open(linkWebUrl,"_blank");
       }
     } catch (err) {
       console.error("Error connecting device:", err, err.stack);
@@ -287,17 +362,17 @@ export function DeviceConnection({ onClose }: DeviceConnectionProps) {
           },
           body: JSON.stringify({
             vital_user_id: userData?.vital_user_id,
-            user_id:user?.id,
+            user_id: user?.id,
             provider: selectedProvider,
           }),
         }
       );
       const data = await response.json();
-      if(data?.success){
+      if (data?.success) {
         getConnectedProviders();
       }
-    } catch (error) {}
-    finally{
+    } catch (error) {
+    } finally {
       setDisconnectLoading(false);
     }
   };
@@ -308,10 +383,12 @@ export function DeviceConnection({ onClose }: DeviceConnectionProps) {
     const others: ProviderType[] = [];
 
     providers.forEach((provider) => {
-      if (featuredProviders.includes(provider.name)) {
-        featured.push(provider);
-      } else {
-        others.push(provider);
+      if (provider.authType !== "sdk") {
+        if (featuredProviders.includes(provider.name)) {
+          featured.push(provider);
+        } else {
+          others.push(provider);
+        }
       }
     });
     featured.sort((a, b) => a.name.localeCompare(b.name));
@@ -332,43 +409,33 @@ export function DeviceConnection({ onClose }: DeviceConnectionProps) {
 
   return (
     <div className="relative fixed inset-0 flex items-center justify-center ">
-      <div className="relative bg-gray-800 px-2 rounded-lg shadow-lg w-full max-w-md ">
-        <div className="flex items-center mt-4 justify-between mb-6 sticky top-0 bg-gray-800 z-10 px-2 ">
-          <div className="flex gap-2 items-center">
-            <div className="flex items-center gap-2">
-              <Smartphone className="text-orange-500" size={24} />
-              <h3 className="text-lg font-semibold text-white">
-                Connect Health Device
-              </h3>
-            </div>
-
-            {/* Search Bar */}
-            <div className="relative mb-4">
-              <Search
-                className="absolute left-3 top-2.5 text-gray-400"
-                size={16}
-              />
-              <input
-                type="text"
-                placeholder="Search provider..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500"
-              />
-            </div>
+      <div className="relative  px-2 rounded-lg shadow-lg w-full  ">
+        <div className="flex items-center md:justify-between gap-2 px-2 mb-6 sticky top-0 bg-gray-800 z-10 py-6 ">
+          <div className="flex items-center gap-2">
+            <Smartphone className="text-orange-500" size={24} />
+            <h3 className="text-lg font-semibold text-white">
+              Connect Health Device
+            </h3>
           </div>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-300"
-          >
-            <X size={20} />
-          </button>
+
+          {/* Search Bar */}
+          <div className="relative ">
+            <Search
+              className="absolute left-3 top-2.5 text-gray-400"
+              size={16}
+            />
+            <input
+              type="text"
+              placeholder="Search provider..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500"
+            />
+          </div>
         </div>
 
-       
-
-        <div className="space-y-4 h-[80vh] overflow-y-auto px-2">
-          <div className="grid grid-cols-1 gap-3">
+        <div className="overflow-y-auto md:px-20  ">
+          <div className="grid grid-cols-1  md:grid-cols-4 gap-4 ">
             {filteredProviders?.map((provider: ProviderType) => {
               const isConnected = connectedProviders.some(
                 (connectedProvider) => connectedProvider.slug === provider.slug
@@ -381,7 +448,7 @@ export function DeviceConnection({ onClose }: DeviceConnectionProps) {
                       ? () => handleProvderDiselect(provider?.slug)
                       : () => handleProviderSelect(provider.slug)
                   }
-                  className={`flex items-center gap-3 p-3 rounded-lg border-2 border-gray-600 transition-colors${
+                  className={`flex items-center cursor-pointer gap-3 p-3 rounded-lg border-2 border-gray-600  bg-gray-800 transition-colors${
                     loading && selectedProvider === provider.slug
                       ? "bg-gray-700 cursor-wait"
                       : "bg-gray-700/50 hover:bg-gray-700"
@@ -389,13 +456,13 @@ export function DeviceConnection({ onClose }: DeviceConnectionProps) {
                 >
                   <img
                     src={provider?.logo}
-                    className="text-2xl object-cover w-10 h-10"
+                    className="text-2xl object-cover w-12 h-12 rounded-full"
                   />
                   <div className="flex-1 text-left">
-                    <div className="text-sm font-medium text-white">
+                    <div className="text-lg font-medium text-white">
                       {provider.name}
                     </div>
-                    <div className="text-xs text-gray-400">
+                    <div className="text-gray-400">
                       {provider.description || "No description available"}
                     </div>
 
@@ -407,7 +474,7 @@ export function DeviceConnection({ onClose }: DeviceConnectionProps) {
                         </span>
                       </div>
                     ) : (
-                      <div className="text-xs text-gray-400 flex flex-col">
+                      <div className="text-gray-400 flex flex-col">
                         {isConnected && (
                           <span className="text-green-500">Connected</span>
                         )}
@@ -424,32 +491,37 @@ export function DeviceConnection({ onClose }: DeviceConnectionProps) {
               );
             })}
           </div>
+        </div>
 
-
-          <div className="mt-6 space-y-4" ref={emailInputRef}>
+        <div
+          className="mt-6 space-y-4 bg-gray-800 flex flex-col justify-center items-center "
+          ref={emailInputRef}
+        >
           {showDisConnectedMessage && (
             <div className="flex justify-between">
               <span className="text-yellow-500">
-              You Are Disconnecting Device{" "}
-              {connectedProviders?.find(
-                (provider) => provider?.slug === selectedProvider
-              )?.name || ""}
-
+                You Are Disconnecting Device{" "}
+                {connectedProviders?.find(
+                  (provider) => provider?.slug === selectedProvider
+                )?.name || ""}
               </span>
               <button
-                    onClick={handleDisconnect}
-                    className="px-4 py-2 text-sm bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {disConnectLoading ? "Disconnecting..." : "Disconnect Device"}
-                  </button>
+                onClick={handleDisconnect}
+                className="px-4 py-2 text-sm bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {disConnectLoading ? "Disconnecting..." : "Disconnect Device"}
+              </button>
             </div>
           )}
-            {showEmailInput && (
-              <div className="flex flex-col gap-4">
+          {showEmailInput && (
+            <div className="flex flex-col gap-4 md:w-1/2 w-full p-2">
+              <div className="flex flex-col gap-2">
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">
                     Enter your{" "}
-                    {providers.find((p) => p.slug === selectedProvider)?.name}{" "}
+                    <span className="text-orange-500 text-lg">
+                      {providers.find((p) => p.slug === selectedProvider)?.name}{" "}
+                    </span>
                     Account Email
                   </label>
                   <input
@@ -459,41 +531,60 @@ export function DeviceConnection({ onClose }: DeviceConnectionProps) {
                     placeholder="device@example.com"
                     className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500"
                   />
-                  <p className="mt-2 text-xs text-gray-400">
-                    This should be the email associated with your device account
-                  </p>
                 </div>
 
-                <div className="flex justify-end gap-3">
-                  <button
-                    onClick={() => {
-                      setShowEmailInput(false);
-                      setSelectedProvider(null);
-                      setDeviceEmail("");
-                    }}
-                    className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors"
-                  >
-                    Back
-                  </button>
-                  <button
-                    onClick={handleConnect}
-                    disabled={loading || !deviceEmail.trim()}
-                    className="px-4 py-2 text-sm bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {loading ? "Connecting..." : "Connect Device"}
-                  </button>
-                </div>
+                <p className="mt-2 text-s text-gray-400">
+                  This should be the email associated with your device account
+                </p>
               </div>
-            )}
-             {error && (
-          <div className="bg-red-500/10 text-red-400 p-3 rounded-lg text-sm flex items-start gap-2">
-            <X size={16} className="shrink-0 mt-0.5" onClick={handleErrorRemove} />
-            <span>{error}</span>
-          </div>
-        )}
-          </div>
 
-          <div className="text-xs text-center text-gray-400 mt-4">
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => {
+                    setShowEmailInput(false);
+                    setSelectedProvider(null);
+                    setDeviceEmail("");
+                  }}
+                  className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors"
+                >
+                  Back
+                </button>
+                <button
+                  onClick={handleConnect}
+                  disabled={loading || !deviceEmail.trim()}
+                  className="px-4 py-2 text-sm bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {loading ? "Connecting..." : "Connect Device"}
+                </button>
+              </div>
+            </div>
+          )}
+          {connectionMessage ? (
+            <div>
+              <div className="bg-green-500/10 text-white p-3 rounded-lg text-sm flex items-start gap-2">
+                  <X
+                    size={16}
+                    className="shrink-0 mt-0.5"
+                    onClick={handleErrorRemove}
+                  />
+                  <span>{connectionMessage}</span>
+                </div>
+            </div>
+          ) : (
+            <div>
+              {errorMessage && (
+                <div className="bg-red-500/10 text-red-400 p-3 rounded-lg text-sm flex items-start gap-2">
+                  <X
+                    size={16}
+                    className="shrink-0 mt-0.5"
+                    onClick={handleErrorRemove}
+                  />
+                  <span>{errorMessage}</span>
+                </div>
+              )}
+            </div>
+          )}
+          <div className="text-s py-2 text-center text-gray-400 mt-4  ">
             Your data is securely synced and only accessible by you
           </div>
         </div>
