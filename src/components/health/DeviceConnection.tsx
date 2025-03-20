@@ -70,6 +70,7 @@ export function DeviceConnection() {
     setError("");
     setConnectionMessage("");
   };
+
   // GET ALL PROVIDERS
   useEffect(() => {
     const getAllProviders = async () => {
@@ -147,7 +148,6 @@ export function DeviceConnection() {
       });
     }
   }, [selectedProvider]);
-
   useEffect(() => {
     const processStatus = async () => {
       setLoading(true);
@@ -431,9 +431,9 @@ const embedableProviders:string[] = [
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500"
             />
+
           </div>
         </div>
-
         <div className="overflow-y-auto md:px-20  ">
           <div className="grid grid-cols-1  md:grid-cols-4 gap-4 ">
             {filteredProviders?.map((provider: ProviderType) => {
@@ -588,6 +588,7 @@ const embedableProviders:string[] = [
             Your data is securely synced and only accessible by you
           </div>
         </div>
+
       </div>
     </div>
   );

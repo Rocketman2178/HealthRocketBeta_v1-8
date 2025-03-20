@@ -3,8 +3,10 @@ import { User, X, Loader2, Check, Smartphone, Shield } from "lucide-react";
 import { useSupabase } from "../../contexts/SupabaseContext";
 import { supabase } from "../../lib/supabase";
 import LoadingSpinner from "../common/LoadingSpinner";
+
 import { useNavigate } from "react-router-dom";
 import { supportedProviders } from "../../constants";
+
 
 interface VitalSetupProps {
   onComplete: () => void;
@@ -105,6 +107,11 @@ export function VitalSetup({ onComplete, onClose }: VitalSetupProps) {
 
   if (getVitalUserLoading) return <LoadingSpinner />;
 
+  //
+  const handleGotoConnectDevices = () => {
+    onComplete();
+  };
+
   const renderStep = () => {
     switch (step) {
       case "intro":
@@ -140,8 +147,6 @@ export function VitalSetup({ onComplete, onClose }: VitalSetupProps) {
                       Supported Devices
                     </h4>
                   </div>
-                  
-                  
                 </div>
 
                 <ul className="space-y-1  flex flex-col gap-2 text-gray-300">

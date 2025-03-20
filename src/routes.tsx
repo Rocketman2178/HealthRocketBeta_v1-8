@@ -5,6 +5,7 @@ import { ChatPage } from './components/chat/ChatPage';
 import { VitalResponsePage } from './components/common/VitalResponePage';
 import { DeviceConnection } from './components/health/DeviceConnection';
 
+
 export function AppRoutes() {
 
   return (
